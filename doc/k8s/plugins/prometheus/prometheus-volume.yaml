@@ -1,0 +1,30 @@
+# 创建PV
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prometheus
+spec:
+  capacity:
+    # 可根据自己需要进行调整(pvc必须跟pv大小一致)
+    storage: 5Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  nfs:
+    # 填nfs server的地址(一般挂载目录放置在master下)
+    server: 192.168.80.135
+    path: /data/k8s
+
+---
+# 创建PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus
+  namespace: kube-ops
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

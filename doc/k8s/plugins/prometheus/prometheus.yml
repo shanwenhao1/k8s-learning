@@ -1,0 +1,16 @@
+global:
+  # 抓取指标数据的频率
+  scrape_interval:     15s
+  # 用来控制评估规则的频率, prometheus使用规则产生新的时间序列或者警报
+  evaluation_interval: 15s
+
+# 制定规则
+rule_files:
+  # - "first.rules"
+  # - "second.rules"
+
+# 用于控制prometheus监控哪些资源
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

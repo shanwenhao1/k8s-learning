@@ -5,7 +5,7 @@
 
 ~~p[Elasticsearch权威指南(中文版)](https://www.gitbook.com/book/looly/elasticsearch-the-definitive-guide-cn/details)p~~
 
-# kwFlume
+# Flume
 
 Flume是分布式、可靠且可用的有效收集、聚合、大批量移动日志的服务. 其拥有简单、灵活的基于流数据的架构, 它通过故障转移
 和恢复机制来确保可靠性. 它使用简单的可扩展的数据模型, 以允许在线分析应用程序. 

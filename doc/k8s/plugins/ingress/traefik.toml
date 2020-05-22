@@ -1,0 +1,20 @@
+# 默认将http服务强制跳转至https服务, 这样我们通过traefik进来的服务都是https的, 要访问https, 就得配置对应的证书了
+defaultEntryPoints = ["http", "https"]
+
+# 将一个http入口点转发到一个https入口点上(保留SNI支持)
+[entryPoints]
+  [entryPoints.http]
+  address = ":80"
+    [entryPoints.http.redirect]
+      entryPoint = "https"
+  [entryPoints.https]
+  address = ":443"
+    [entryPoints.https.tls]
+      [[entryPoints.https.tls.certificates]]
+      CertFile = "/ssl/tls.crt"
+      KeyFile = "/ssl/tls.key"
+# 开启traefik内置的/metrics的接口
+[metrics]
+  [metrics.prometheus]
+    entryPoint = "traefik"
+    buckets = [0.1, 0.3, 1.2, 5.0]

@@ -19,9 +19,14 @@ K8s集群内部使用`kube-dns`或`core-dns`实现服务发现的功能, K8s中�
 ## Traefik介绍
 
 Traefik是一款开源的反向代理与负载均衡工具. 它最大的优点是能够与常见的微服务系统直接整合, 可以实现自动化动态配置.
-![](../../../picture/k8s/ingress/traefik-architecture.png)
+![](../../../picture/k8s/ingress/traefik-architecture.png). [官方文档](https://docs.traefik.cn/)
 
-### 部署
+### [部署(简单示例)](#简单http部署)
+
+### [安全认证部署](#Ingress tls和path)
+
+
+## 简单http部署
 
 - 使用RBAC安全认证方式[`rbac.yaml`](rbac.yaml)
     ```bash
@@ -43,7 +48,7 @@ Traefik是一款开源的反向代理与负载均衡工具. 它最大的优点�
     # 为traefik dashboard创建对应的ingress对象
     kubectl create -f ingress.yaml
     ```
-    - ~~~`此步骤可不进行`由于ingress必须使用域名, 不支持ip地址, 因此我们需要在虚拟机下`/etc/hosts`中添加一行~~~
+    - ~~(此步骤可不进行)由于ingress必须使用域名, 不支持ip地址, 因此我们需要在虚拟机下`/etc/hosts`中添加一行~~
     ```bash
     # 自定义域名(仅实验)
     192.168.80.137  k8s.swh.node.com
@@ -63,15 +68,25 @@ Traefik是一款开源的反向代理与负载均衡工具. 它最大的优点�
 
 
 
-### Ingress tls和path
+## Ingress tls和path
 
 现在大部分场景下我们都会使用https来访问我们的服务, 接下来将使用自签名的证书用于https访问.
-- 使用openssl命令生成CA证书:
-```bash
-# 生成CA证书
-openssl req -newkey rsa:2048 -nodes -keyout tls.key -x509 -days 365 -out tls.crt
-# 创建secret对象存储上面的证书
-kubectl create secret generic traefik-cert --from-file=tls.crt --from-file=tls.key -n kube-system
-```
-- 更改Traefik的默认配置, 让其支持https:
-[详情请参考](https://www.qikqiak.com/k8s-book/docs/41.ingress%20config.html)
+- 使用openssl命令生成CA证书并生成secret:
+    - 签发traefik 证书
+        ```bash
+        openssl req -newkey rsa:2048 -nodes -keyout tls.key -x509 -days 365 -out tls.crt
+        ```
+    - 创建secret
+        ```bash
+        kubectl create secret generic traefik-cert --from-file=tls.crt --from-file=tls.key -n kube-system
+        ```
+- 更改Traefik的默认配置, 让其支持https, 根据[traefik.toml](traefik.toml)配置文件:
+    - 将上面的`traefik.toml`通过`configmap`对象挂载到traefik pod中去
+        ```bash
+        kubectl create configmap traefik-conf --from-file=traefik.toml -n kube-system
+        ```
+    - 更改[简单http部署](#简单http部署)中生成traefik pod的yaml文件, 添加了以volume方式挂载的
+    配置文件配置, 以及增加了`443` https方式访问的端口, 更改后的文件[traefik2.yaml](traefik2.yaml)
+        ```bash
+        kubectl create -f traefik2.yaml
+        ```

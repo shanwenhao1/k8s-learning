@@ -27,4 +27,6 @@ Prometheus是Google内部监控报警系统的开源版本, 是Google [SRE](http
 
 ## [安装](prometheus%20build.md)
 
-## [使用教程](prometheus%20use.md)
+## [使用教程](probetheus%20use/prometheus%20use.md)
+
+## [Prometheus报警配置](alertManager/alertManager.md)

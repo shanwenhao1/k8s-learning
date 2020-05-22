@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: es-cluster
+  namespace: logging
+spec:
+  serviceName: elasticsearch
+  # 测试环境下可修改为1, 相应的discovery.zen.minimum_master_nodes的value就该改成1
+  # discovery.zen.ping.unicast.hosts的value应该删掉不必要的
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    # Pod模板内容
+    spec:
+      containers:
+      - name: elasticsearch
+        # -oss后缀的镜像是Elsticsearch的开源版本
+        # Elasticsearch版本选择(https://www.elastic.co/cn/downloads/past-releases#elasticsearch-oss)
+        image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.8.2
+        resources:
+          limits:
+            cpu: 1000m
+          requests:
+            cpu: 100m
+        ports:
+        - containerPort: 9200
+          name: rest
+          protocol: TCP
+        - containerPort: 9300
+          name: inter-node
+          protocol: TCP
+        # 声明数据持久化目录
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        # 设置环境变量
+        env:
+        # Elasticsearch集群的名称
+        - name: cluster.name
+          value: k8s-logs
+        # 节点的名称, 通过metadata.name来获取. 这里将解析为es-cluster-[0,1,2], 取决于节点的指定顺序
+        - name: node.name
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # 用于设置Elasticsearch集群中节点相互连接的发现方法. 使用unicastdiscovery方式(静态主机列表的方式),
+        # 更多关于Elasticsearch发现的(https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-discovery.html)
+        - name: discovery.zen.ping.unicast.hosts
+          # 由于我们之前设置了无头服务, 因此我们的Pod具有唯一的DNS域 `es-cluster-[0,1,2].elasticsearch.logging.svc.cluster.local`
+          # 因此我们相应的设置此变量, 又由于都在同一个namespace下, 因此可以缩短为 `es-cluster-[0,1,2].elasticsearch`
+          value: "es-cluster-0.elasticsearch,es-cluster-1.elasticsearch,es-cluster-2.elasticsearch"
+        # 防止"脑裂"的设置, 将其设置为`(N/2) + 1`(向下取整), N是集群中符合主节点的数量
+        # 关于此参数设置的更多信息(https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-node.html#split-brain)
+        - name: discovery.zen.minimum_master_nodes
+          value: "2"
+        # 设置JVM使用512MB的最小和最大栈
+        # 堆栈设置的相关文档(https://www.elastic.co/guide/en/elasticsearch/reference/current/heap-size.html)
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
+      # 定义的几个在主应用程序之前运行的init容器, 按照定义的顺序依次执行, 全部执行完成后才会启动主应用容器
+      initContainers:
+      # 执行chown命令, 将Elasticsearch数据目录的用户和组更改为1000:1000(Elasticsearch用户的UID)
+      # Elasticsearch生产中的一些默认注意事项(https://www.elastic.co/guide/en/elasticsearch/reference/current/docker.html#_notes_for_production_use_and_defaults)
+      - name: fix-permissions
+        image: busybox
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      # 增加操作系统对mmap计数的限制, 默认情况该值太低, 导致内存不足的错误
+      # 更多请查看(https://www.elastic.co/guide/en/elasticsearch/reference/current/vm-max-map-count.html)
+      - name: increase-vm-max-map
+        image: busybox
+        command: ["sysctl", "-w", "vm.max_map_count=262144"]
+        securityContext:
+          privileged: true
+      # 执行ulimit命令增加打开文件描述符的最大数量的
+      - name: increase-fd-ulimit
+        image: busybox
+        command: ["sh", "-c", "ulimit -n 65536"]
+        securityContext:
+          privileged: true
+  # 定义volume模板
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: elasticsearch
+    spec:
+      # 设置访问模式为'ReadWriteOnce', 只能被mount到单个节点上进行读写
+      accessModes: [ "ReadWriteOnce" ]
+      # 使用了名为es-data-db的StorageClass对象, 需要提前创建
+      storageClassName: es-data-db
+      resources:
+        requests:
+          storage: 10Gi

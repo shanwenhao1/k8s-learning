@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: kube-ops
+data:
+  grafana.ini: |
+    [server]
+    # 你grafana的url地址
+    root_url = http://k8s.swh.com:32356
+    [smtp]
+    enabled = true
+    host = smtp.qq.com:465
+    user = swh-email@qq.com
+    # 这个密码是你开启smtp服务生成的密码
+    password = jsxzsnqvhbdebbeb
+    skip_verify = false
+    from_address = swh-email@qq.com
+    [alerting]
+    enabled = true
+    execute_alerts = true

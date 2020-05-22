@@ -31,8 +31,8 @@ spec:
         ports:
         - name: http
           containerPort: 80
-          # 可指定服务端口为80端口(http默认访问端口为80), 这样nodePort部署方式访问就可省略端口号, 直接使用ip或域名访问
-          hostPort: 80
+#          可指定服务端口为80端口(http默认访问端口为80), 这样nodePort部署方式访问就可省略端口号, 直接使用ip或域名访问
+#          hostPort: 80
         - name: admin
           containerPort: 8080
         args:

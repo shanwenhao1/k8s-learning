@@ -1,0 +1,79 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: traefik-ingress-controller
+  namespace: kube-system
+  labels:
+    k8s-app: traefik-ingress-lb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: traefik-ingress-lb
+  template:
+    metadata:
+      labels:
+        k8s-app: traefik-ingress-lb
+        name: traefik-ingress-lb
+    spec:
+      serviceAccountName: traefik-ingress-controller
+      terminationGracePeriodSeconds: 60
+      volumes:
+      - name: ssl
+        secret:
+          secretName: traefik-cert
+      - name: config
+        configMap:
+          name: traefik-conf
+# 选用master节点进行部署(因为后续ingress配置必须要域名模式, 为了测试方便使用master节点部署, 生产环境中不建议使用
+# master)
+#      tolerations:
+#      - operator: "Exists"
+#      nodeSelector:
+#        kubernetes.io/hostname: master
+      containers:
+      - image: traefik
+        name: traefik-ingress-lb
+        volumeMounts:
+        - mountPath: "/ssl"
+          name: "ssl"
+        - mountPath: "/config"
+          name: "config"
+        ports:
+        - name: http
+          # 该端口为traefik ingress-controller的服务端口
+          containerPort: 80
+          hostPort: 80
+        # 增加了443端口以供https访问
+        - name: https
+          containerPort: 443
+          hostPort: 443
+        - name: admin
+          # 该端口为traefik的关丽丽web界面
+          containerPort: 8080
+        args:
+        # 启动参数中指定了traefik.toml配置文件(该文件是通过volume挂载进来的)
+        - --configfile=/config/traefik.toml
+        - --api
+        - --kubernetes
+        - --logLevel=INFO
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: traefik-ingress-service
+  namespace: kube-system
+spec:
+  selector:
+    k8s-app: traefik-ingress-lb
+  ports:
+    - protocol: TCP
+      port: 80
+      name: web
+    - protocol: TCP
+      port: 8080
+      name: admin
+    - protocol: TCP
+      port: 443
+      name: https
+  type: NodePort

@@ -1,0 +1,161 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: fluentd-config
+  namespace: logging
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+data:
+  system.conf: |-
+    # system用于fluentd的相关设置
+    <system>
+      root_dir /tmp/fluentd-buffers/
+      # 多进程设置
+      # workers 3
+    </system>
+  # 容器源收集配置
+  containers.input.conf: |-
+    # <source>是fluentd的一切数据来源, 模块类型有很多, 详情请查看https://docs.fluentd.org/input:
+    <source>
+      # id: 表示引用该日志源的唯一标识符, 可用于进一步过滤和路由结构化日志数据
+      @id fluentd-containers.log
+      # type: Fluentd内置的指令,  tail表示Fluentd从上次读取的位置通过tail不断获取数据
+      @type tail
+      # path: tail类型下的特定参数, 采集/var/log/containers(kubernetes节点上用来存储运行容器stdout输出日志数据的目录)目录下的所有日志
+      path /var/log/containers/*.log
+      # pos_file: 检查点, Fluent程序如果重启将使用该文件中的位置来恢复日志收集
+      pos_file /var/log/es-containers.log.pos
+      time_format %Y-%m-%dT%H:%M:%S.%NZ
+      localtime
+      # tag: 用于将日志源与目标或者过滤器匹配的自定义字符串, Fluentd匹配源/目标标签来路由日志数据
+      tag raw.kubernetes.*
+      format json
+      read_from_head true
+    </source>
+    # Detect exceptions in the log output and forward them as one log entry.
+    <match raw.kubernetes.**>
+      @id raw.kubernetes
+      @type detect_exceptions
+      remove_tag_prefix raw
+      message log
+      stream stream
+      multiline_flush_interval 5
+      max_bytes 500000
+      max_lines 1000
+    </match>
+  system.input.conf: |-
+    # Logs from systemd-journal for interesting services.
+    <source>
+      @id journald-docker
+      @type systemd
+      filters [{ "_SYSTEMD_UNIT": "docker.service" }]
+      <storage>
+        @type local
+        persistent true
+      </storage>
+      read_from_head true
+      tag docker
+    </source>
+    <source>
+      @id journald-kubelet
+      @type systemd
+      filters [{ "_SYSTEMD_UNIT": "kubelet.service" }]
+      <storage>
+        @type local
+        persistent true
+      </storage>
+      read_from_head true
+      tag kubelet
+    </source>
+  forward.input.conf: |-
+    # Takes the messages sent over TCP
+    <source>
+      @type forward
+      @id forward_input
+      port 24224
+    </source>
+  # http收集日志, 官方文档: https://docs.fluentd.org/input/http
+  # fluentd支持一次性传输多个记录以提高性能, 示例:
+    # curl -X POST -d "json=[{"foo":"bar"},{"abc":"def"},{"xyz":"123"}]" http://localhost:9880/app.log
+  # 此外还支持gzip文件等
+  http.input.conf: |-
+    # Takes the message sent over http
+    <source>
+      @type http
+      @id http_input
+      port 9880
+      # 白名单设置 ["*"]表示允许任意请求, 使用示例: ["domain1", "domain2"]
+      cors_allow_origins ["*"]
+      bind 0.0.0.0
+      # 使用parse解析其他格式的输入
+      # 下例为解析 curl -X POST -d '123456:awesome' http://localhost:9880/app.log 这种格式的输入
+      <parse>
+        @type regexp
+        expression /^(?<field1>\d+):(?<field2>\w+)$/
+      </parse>
+      body_size_limit 32m
+      keepalive_timeout 10s
+    </source>
+#    # http请求的match, http://this.host:8888/myapp.access?json={"event":"data"}
+#    <match myapp.access>
+#      <server>
+#        port 8888
+#      </server>
+#      @id httplog
+#      @type elasticsearch
+#      @log_level info
+#      include_tag_key true
+#      host elasticsearch
+#      port 9200
+#      logstash_format true
+#      request_timeout    30s
+#      <buffer>
+#        @type file
+#        path /var/log/fluentd-buffers/app.buffer
+#        flush_mode interval
+#        retry_type exponential_backoff
+#        flush_thread_count 2
+#        flush_interval 5s
+#        retry_forever
+#        retry_max_interval 30
+#        chunk_limit_size 2M
+#        queue_limit_length 8
+#        overflow_action block
+#      </buffer>
+#    </match>
+  # 配置日志数据发送到elasticsearch:9200服务(路由配置)
+  output.conf: |-
+    # Enriches records with Kubernetes metadata
+    <filter kubernetes.**>
+      @type kubernetes_metadata
+    </filter>
+    # match: match标识一个目标标签, 后面是一个匹配日之源的正则表达式, 这里配置成**表明捕获所有的日志
+    <match **>
+      # id: 目标唯一标识符
+      @id elasticsearch
+      # type: 指定输出插件为elasticsearch(插件名称)
+      @type elasticsearch
+      # log_level: 需要捕获的日志级别, 任何该级别及以上的日志都会路由到Elasticsearch
+      @log_level info
+      include_tag_key true
+      # host/port: 定义Elasticsearch的地址, 也可配置认证信息(这里我们Elasticsearch不需要认证就未配置)
+      host elasticsearch
+      port 9200
+      # logstash_format: Elasticsearch对日志数据构建反向索引进行搜索, 设置为true, Fluentd将会以logstash格式来转发结构化的日志数据
+      logstash_format true
+      request_timeout    30s
+      # buffer: Fluentd允许在目标不可用时进行缓存(比如网络出现故障或者Elasticsearch不可用的时候, 也有助于降低磁盘的IO)
+      <buffer>
+        @type file
+        path /var/log/fluentd-buffers/kubernetes.system.buffer
+        flush_mode interval
+        retry_type exponential_backoff
+        flush_thread_count 2
+        flush_interval 5s
+        retry_forever
+        retry_max_interval 30
+        chunk_limit_size 2M
+        queue_limit_length 8
+        overflow_action block
+      </buffer>
+    </match>

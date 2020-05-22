@@ -1,0 +1,50 @@
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  labels:
+    prometheus: k8s
+  name: k8s
+  namespace: monitoring
+spec:
+  alerting:
+    alertmanagers:
+    - name: alertmanager-main
+      namespace: monitoring
+      port: web
+  # storageClass资源对象(动态PV持久化数据至磁盘)
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: prometheus-data-db
+        resources:
+          requests:
+            storage: 5Gi
+  baseImage: quay.io/prometheus/prometheus
+  nodeSelector:
+    kubernetes.io/os: linux
+  podMonitorSelector: {}
+  replicas: 2
+#  # etcd证书生成的secret对象, 自定义operator监控etcd需要
+#  secrets:
+#  - etcd-certs
+  resources:
+    requests:
+      memory: 400Mi
+  # ruleSelector用来匹配rule规则的过滤器
+  ruleSelector:
+    matchLabels:
+      # 要求匹配prometheus=k8s和role=alert-rules标签的PrometheusRule资源对象
+      prometheus: k8s
+      role: alert-rules
+  securityContext:
+    fsGroup: 2000
+    runAsNonRoot: true
+    runAsUser: 1000
+  # 添加的alert自动发现配置, 详情请见本文件上级目录中的operator alert.md
+  additionalScrapeConfigs:
+    name: additional-configs
+    key: prometheus-additional.yaml
+  serviceAccountName: prometheus-k8s
+  serviceMonitorNamespaceSelector: {}
+  serviceMonitorSelector: {}
+  version: v2.11.0

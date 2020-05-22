@@ -102,3 +102,14 @@ helm delete unrealized-hamster
 ```
 ![](../../../../doc/picture/k8s/helm/helm%20delete.png)
 
+
+## Helm Hub
+[Helm Hub](https://hub.helm.sh/)是Helm官方的网站, 里面包含了大量的Helm Chart. 可以方便我们部署服务
+
+添加Helm Hub源
+```bash
+# kubernetes官方源
+helm repo add stable https://kubernetes-charts-incubator.storage.googleapis.com/
+# 阿里源https://github.com/cloudnativeapp/charts
+helm repo add apphub https://apphub.aliyuncs.com
+```

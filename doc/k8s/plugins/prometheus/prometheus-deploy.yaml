@@ -38,10 +38,30 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 512Mi
+            memory: 200Mi
           limits:
-            cpu: 100m
+            cpu: 200m
             memory: 512Mi
+      # 部署alertManager
+      - image: prom/alertmanager
+        name: alertmanager
+        #imagePullPolicy: IfNotPresent
+        args:
+        - "--config.file=/etc/alertmanager/config.yml"
+        - "--storage.path=/alertmanager/data"
+        ports:
+        - containerPort: 9093
+          name: http
+        volumeMounts:
+        - mountPath: "/etc/alertmanager"
+          name: alertcfg
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
       # 必须添加securityContext属性, 将runAsUser设置为0, 因为运行prometheus所使用的用户是nobody,
       # 不设置会报permission denied
       securityContext:
@@ -54,3 +74,7 @@ spec:
       - configMap:
           name: prometheus-config
         name: config-volume
+      # 必须先创建alertManager的configMap
+      - name: alertcfg
+        configMap:
+          name: alert-config

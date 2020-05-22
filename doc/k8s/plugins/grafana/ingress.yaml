@@ -1,0 +1,17 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: grafana-ui
+  namespace: kube-ops
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  rules:
+  - host: k8s.swh.com
+    http:
+      paths:
+      - backend:
+          # serviceName对应之前创建的 traefik.yaml 中的traefik-ingress-service
+          serviceName: grafana
+          # 端口对应 traefik.yaml 中的8080端口, 如果为了预防端口更改, 可以使用端口别名 "admin"
+          servicePort: 3000

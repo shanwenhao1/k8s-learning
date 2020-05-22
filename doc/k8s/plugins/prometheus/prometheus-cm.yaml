@@ -6,9 +6,226 @@ metadata:
 data:
   prometheus.yml: |
     global:
-      scrape_interval: 15s
-      scrape_timeout: 15s
+      scrape_interval: 30s
+      scrape_timeout: 30s
+
+    rule_files:
+    - /etc/prometheus/rules.yml
+
+    # 配置alertManager端口
+    alerting:
+      alertmanagers:
+        - static_configs:
+          - targets: ["localhost:9093"]
+
     scrape_configs:
     - job_name: 'prometheus'
       static_configs:
       - targets: ['localhost:9090']
+
+    # 追加的traefik监控
+    - job_name: 'traefik'
+      static_configs:
+        - targets: ['traefik-ingress-service.kube-system.svc.cluster.local:8080']
+
+    # 追加的redis监控(exporter方式)
+    #- job_name: 'redis'
+    #  static_configs:
+    #  - targets: ['redis:9121']
+
+
+    - job_name: 'kubernetes-nodes'
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+
+
+    # 追加的node 节点监控
+    - job_name: 'kubernetes-node-exporter'
+      kubernetes_sd_configs:
+      - role: node
+      # relabel_config 可以在Prometheus采集数据之前, 通过Target实例的Metadata信息, 动态重新写入Label 的值
+      # (也可根据Target实例的Metadata信息选择是否采集或忽略该Target实例)
+      relabel_configs:
+      # 匹配__address__标签并替换掉其中的端口
+      - source_labels: [__address__]
+        regex: '(.*):10250'
+        replacement: '${1}:9100'
+        target_label: __address__
+        action: replace
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: 'kubernetes-nodes-kubelet'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+    # 追加的容器监控
+    - job_name: 'kubernetes-cadvisor'
+      kubernetes_sd_configs:
+      - role: node
+      scheme: https
+      tls_config:
+        # ca.cart和token是Pod启动后自动注入进来的, 通过这两个文件可在Pod中访问apiserver
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        # 添加__metrics_path__访问路径
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+    # 追加的apiserver监控
+    - job_name: 'kubernetes-apiservers'
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      # relabel_configs中使用 keep选择性保留我们需要的服务
+      relabel_configs:
+      - action: keep
+        source_labels:
+        - __meta_kubernetes_namespace
+        - __meta_kubernetes_service_name
+        - __meta_kubernetes_endpoint_port_name
+        regex: default;kubernetes;https
+
+    # 追加对普通service的监控
+    - job_name: 'kubernetes-service-endpoints'
+      kubernetes_sd_configs:
+      - role: endpoints
+      # relabel_configs做了大量配置
+      relabel_configs:
+      # 自动发现集群中的Service
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        # 配置为true时, 想要自动发现集群中的service则需要在annotation区域添加`prometheus.io/scrape=true`的声明
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+        action: replace
+        target_label: __scheme__
+        regex: (https?)
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_name
+
+  # 报警规则配置文件rules.yml以configMap的形式挂载到/etc/prometheus目录下
+  rules.yml: |
+      groups:
+      - name: test-rule
+        rules:
+        # 名为NodeFilesystemUsage的报警规则
+        - alert: NodeFilesystemUsage
+          expr: (node_filesystem_size_bytes{device="rootfs"} - node_filesystem_free_bytes{device="rootfs"}) / node_filesystem_size_bytes{device="rootfs"} * 100 > 80
+          # for使prometheus服务等待指定时间, 再执行查询表达式
+          for: 2m
+          labels:
+            team: node
+          # annotations指定了另一组标签, 常用语存储额外的信息(用于报警信息展示之类的, 不被当做告警实例的身份标识)
+          annotations:
+            summary: "{{$labels.instance}}: High Filesystem usage detected"
+            description: "{{$labels.instance}}: Filesystem usage is above 80% (current value is: {{ $value }}"
+        - alert: NodeMemoryUsage
+          expr: (node_memory_MemTotal_bytes - (node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes)) / node_memory_MemTotal_bytes * 100 > 80
+          for: 2m
+          labels:
+            team: node
+          annotations:
+            summary: "{{$labels.instance}}: High Memory usage detected"
+            description: "{{$labels.instance}}: Memory usage is above 80% (current value is: {{ $value }}"
+        - alert: NodeCPUUsage
+          expr: (100 - (avg by (instance) (irate(node_cpu{job="kubernetes-nodes",mode="idle"}[5m])) * 100)) > 80
+          for: 2m
+          labels:
+            team: node
+          annotations:
+            summary: "{{$labels.instance}}: High CPU usage detected"
+            description: "{{$labels.instance}}: CPU usage is above 80% (current value is: {{ $value }}"
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alert-config
+  namespace: kube-ops
+data:
+  config.yml: |-
+    global:
+      # 在没有报警的情况下声明为已解决的时间
+      resolve_timeout: 5m
+      # 配置邮件发送信息
+      smtp_smarthost: 'smtp.qq.com:465'
+      smtp_from: 'swh-email@qq.com'
+      smtp_auth_username: 'swh-email@qq.com'
+      smtp_auth_password: 'jsxzsnqvhbdebbeb'
+      smtp_hello: 'qq.com'
+      smtp_require_tls: false
+    # 所有报警信息进入后的根路由，用来设置报警的分发策略
+    route:
+      # 这里的标签列表是接收到报警信息后的重新分组标签，例如，接收到的报警信息里面有许多具有 cluster=A 和 alertname=LatncyHigh 这样的标签的报警信息将会批量被聚合到一个分组里面
+      group_by: ['alertname', 'cluster']
+      # 当一个新的报警分组被创建后，需要等待至少group_wait时间来初始化通知，这种方式可以确保您能有足够的时间为同一分组来获取多个警报，然后一起触发这个报警信息。
+      group_wait: 30s
+      # 当第一个报警发送后，等待'group_interval'时间来发送新的一组报警信息。
+      group_interval: 5m
+      # 如果一个报警信息已经发送成功了，等待'repeat_interval'时间来重新发送他们
+      repeat_interval: 5m
+      # 默认的receiver：如果一个报警没有被一个route匹配，则发送给默认的接收器
+      receiver: default
+      # 上面所有的属性都由所有子路由继承，并且可以在每个子路由上进行覆盖。
+      routes:
+      - receiver: email
+        group_wait: 10s
+        match:
+          team: node
+    receivers:
+    - name: 'default'
+      email_configs:
+      - to: 'swh-email@qq.com'
+        send_resolved: true
+    - name: 'email'
+      email_configs:
+      - to: 'swh-email@qq.com'
+        send_resolved: true

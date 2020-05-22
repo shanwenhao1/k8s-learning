@@ -1,0 +1,29 @@
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.qq.com:465'
+  smtp_from: 'swh-email@qq.com'
+  smtp_auth_username: 'swh-email@qq.com'
+  smtp_auth_password: 'jsxzsnqvhbdebbeb'
+  smtp_hello: 'qq.com'
+  smtp_require_tls: false
+route:
+  group_by: ['job', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  receiver: default
+  routes:
+  - receiver: webhook
+    match:
+      alertname: CoreDNSDown
+receivers:
+# 邮箱接收
+- name: 'default'
+  email_configs:
+  - to: 'swh-email@qq.com'
+    send_resolved: true
+## 钉钉接收(我们部署的钉钉webhook的接收程序的Service地址)
+- name: 'webhook'
+  webhook_configs:
+  - url: 'http://dingtalk-hook.kube-ops:5000'
+    send_resolved: true

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: testhttp
+spec:
+  containers:
+  - name: count
+    image: busybox
+    # 或者curl -X POST -d '{"foo":"bar"}' -H 'Content-Type: application/json'  不输入json前缀
+#    args: [/bin/sh, -c,
+#            'i=0; while true; do curl -X POST -d "json={"foo":$i}" http://localhost:9880/app.log; i=$((i+1)); sleep 1; done']
+    args: [/bin/sh, -c,
+            'i=0; while true; do curl -X POST -d "{"foo":$i}" -H "Content-Type: application/json" http://localhost:9880/app.log; i=$((i+1)); sleep 1; done']

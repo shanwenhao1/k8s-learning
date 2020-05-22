@@ -1,0 +1,6 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: prometheus-data-db
+# provisioner=fuseim.pri/ifs是因为我们集群中使用NFS作为存储后端
+provisioner: fuseim.pri/ifs

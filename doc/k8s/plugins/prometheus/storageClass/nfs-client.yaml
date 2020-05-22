@@ -1,0 +1,36 @@
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: nfs-client-provisioner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: nfs-client-provisioner
+    spec:
+      # 使用的serviceAccount定义了相应的权限, 需要创建
+      serviceAccountName: nfs-client-provisioner
+      containers:
+        - name: nfs-client-provisioner
+          image: quay.io/external_storage/nfs-client-provisioner:latest
+          volumeMounts:
+            - name: nfs-client-root
+              mountPath: /persistentvolumes
+          env:
+            - name: PROVISIONER_NAME
+              value: fuseim.pri/ifs
+            # 将环境变量NFS_SERVER和NFS_PATH的值替换成我们自己搭建的NFS服务器相关的配置
+            - name: NFS_SERVER
+              # nfs服务器地址
+              value: 192.168.80.135
+            - name: NFS_PATH
+              # nfs服务器开放的目录
+              value: /data/k8s
+      volumes:
+        - name: nfs-client-root
+          nfs:
+            server: 192.168.80.135
+            path: /data/k8s

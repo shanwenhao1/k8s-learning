@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+  # 使用annotations属性来标识添加的StorageClass对象
+  annotations:
+    volume.beta.kubernetes.io/storage-class: "course-nfs-storage"
+spec:
+  accessModes:
+  # 访问模式
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Mi

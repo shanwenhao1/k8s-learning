@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-system
+  name: kube-scheduler
+  # labels的配置必须与相应的ServiceMonitor资源对象中的selector保持一致
+  labels:
+    k8s-app: kube-scheduler
+spec:
+  selector:
+    # 可用kubectl describe pod 'your kube-scheduler name' -n kube-system 查看相应的component
+    component: kube-scheduler
+  ports:
+  - name: http-metrics
+    # 10251是kube-scheduler组件 metrics 数据所在的端口
+    port: 10251
+    targetPort: 10251
+    protocol: TCP

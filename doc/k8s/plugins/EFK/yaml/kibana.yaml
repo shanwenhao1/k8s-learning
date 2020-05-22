@@ -1,0 +1,51 @@
+# Kibana的Service服务
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+  labels:
+    app: kibana
+spec:
+  ports:
+  - port: 5601
+    nodePort: 30000
+  type: NodePort
+  selector:
+    app: kibana
+
+# Kibana的Deployment部署
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+  labels:
+    app: kibana
+spec:
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        # Kibana版本选择(最好与elasticSearch版本一致)
+        # (https://www.elastic.co/cn/downloads/past-releases#kibana-oss)
+        image: docker.elastic.co/kibana/kibana-oss:6.8.2
+        resources:
+          limits:
+            cpu: 1000m
+          requests:
+            cpu: 100m
+        env:
+          # 设置Elasticsearch集群的端点和端口, 6.6版本之后ELASTICSEARCH_URL已经改成了ELASTICSEARCH_HOSTS
+          - name: ELASTICSEARCH_HOSTS
+            # 由于elasticsearch是一个headless service, 所以该url将会使用kubernetes DNS解析为Elasticsearch pod 的IP地址
+            value: http://elasticsearch:9200
+        ports:
+        - containerPort: 5601
